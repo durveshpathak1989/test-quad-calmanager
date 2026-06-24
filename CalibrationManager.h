@@ -17,7 +17,7 @@
 #define CALIBRATION_MANAGER_H
 
 #include <Arduino.h>
-#include "MPU9250.h"
+#include "../IMU/MPU9250.h"
 
 // ─────────────────────────────────────────────────────────────
 // Calibration modes

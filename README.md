@@ -1,5 +1,9 @@
 # Test Quad CalibrationManager Library
 
+## Explain It Simply
+
+This module is the setup helper. It walks the drone through calibration steps so the sensors and motors know what normal looks like before flying.
+
 `CalibrationManager` coordinates ESC calibration and guided IMU calibration without scattering calibration state across the flight loop.
 
 ## Pin Map
