@@ -1,3 +1,10 @@
+/*
+ * Name: CalibrationManager.h
+ * Use: Declaration for the calibration state machine used for ESC and IMU calibration.
+ * Version: 4.0.0
+ * Created by: Durvesh Pathak dp676@cornell.edu
+ */
+
 /**
  * ============================================================
  *  CalibrationManager.h  —  Application Calibration Manager (v4.0)
