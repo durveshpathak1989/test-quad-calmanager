@@ -1,85 +1,53 @@
-# Calibration Manager
+# Test Quad CalibrationManager Library
 
-## Purpose
+`CalibrationManager` coordinates ESC calibration and guided IMU calibration without scattering calibration state across the flight loop.
 
-Coordinates guided gyro, accelerometer, magnetometer, and ESC calibration workflows with safety checks and progress status for RC and web UI flows.
+## Pin Map
 
-## Files
+CalibrationManager does not own pins directly. It calls the motor and IMU libraries, so its effective hardware map is:
 
-- `CalibrationManager.h/.cpp`: Calibration state machine and status model.
+| Signal | ESP32 pin | Notes |
+| --- | ---: | --- |
+| SPI SCK | GPIO 5 | MPU-9250/MPU-6500 clock |
+| SPI MISO | GPIO 19 | MPU data to ESP32 |
+| SPI MOSI | GPIO 18 | ESP32 data to MPU |
+| MPU CS | GPIO 33 | Chip select passed to `MPU9250 imu(PIN_MPU_CS)` |
+| MPU INT | GPIO 27 | Optional data-ready interrupt; current firmware does not require it |
+| Motor FL | GPIO 25 | Front-left ESC signal |
+| Motor FR | GPIO 15 | Front-right ESC signal |
+| Motor RL | GPIO 14 | Rear-left ESC signal |
+| Motor RR | GPIO 32 | Rear-right ESC signal |
+| iBUS RX | GPIO 16 | FS-iA6B iBUS TX into ESP32 UART2 RX |
+| iBUS TX | GPIO 4 | Spare UART TX; avoids GPIO17 GPS conflict |
+| I2C SDA | GPIO 21 | BMP280 and VL53L4CX ToF bus |
+| I2C SCL | GPIO 22 | BMP280 and VL53L4CX ToF bus |
+| GPS RX | GPIO 13 | GPS TXD into ESP32 UART1 RX |
+| GPS TX | GPIO 17 | Optional GPS RXD from ESP32 UART1 TX |
 
-## Quick Start
+
+## Main INO Integration Example
 
 ```cpp
 #include "CalibrationManager.h"
 
-CalibrationManager cal;
+static void writeMotors(float fl, float fr, float rl, float rr) {
+    motorSet(fl, fr, rl, rr);
+}
 
 void setup() {
-    cal.begin(imu);
+    calManager.begin(imu);
+    calManager.attachMotorOutputs(writeMotors, motorsOff);
 }
 
 void loop() {
-    cal.setSafety(!armed);
-    if (requestFromUi) {
-        cal.request(CalibrationMode::IMU_ALL_GUIDED, CalibrationSource::WEB);
+    if (rcSwitchHigh && !armed) {
+        calManager.request(CalibrationMode::IMU_ALL_GUIDED, CalibrationSource::RC);
     }
-    cal.update();
+    calManager.update();
 }
 ```
 
-## How It Fits Into The Flight Controller
 
-This library lives under `Submodules/CalManager` in the main `Test_Quad` firmware
-and is built as an Arduino library by adding `Submodules/` to the Arduino
-library search path. The main firmware includes it directly from
-`RC_FlightController.ino` or from another support module.
+## Why These Data Types
 
-The flight controller runs a 400 Hz control loop on ESP32, so this library
-should avoid heap allocation, long blocking calls, and unbounded Serial output
-inside flight-critical paths. Debug output should use `DebugConfig.h` macros
-where available so `VERBOSE_ON=0` builds can compile prints out.
-
-## Data Type Choices
-
-- `enum class CalibrationMode`: Strongly typed mode selection avoids confusing ESC, gyro, accel, and mag calibration requests.
-- `enum class CalibrationState`: Makes the workflow explicit and safe to expose over telemetry.
-- `CalibrationStatus`: A snapshot struct is easier for telemetry and UI code than exposing manager internals.
-- `uint32_t` timestamps: Arduino `millis()` returns unsigned 32-bit values; using the same type avoids signed rollover bugs.
-- Fixed char buffers: Status/error text uses bounded arrays to avoid heap fragmentation on ESP32.
-
-## Usage Guidance
-
-1. Initialize hardware-facing classes once during `setup()`.
-2. Keep update/read calls deterministic when used from a FreeRTOS task.
-3. Prefer explicit validity flags over sentinel numeric values.
-4. Keep units visible in field names, such as `_dps`, `_g`, `_uT`, `_m`, or `_us`.
-5. When adding telemetry fields, update both the packet struct and JSON serializer.
-
-## Example Build Integration
-
-```bash
-arduino-cli compile \
-  --fqbn esp32:esp32:esp32:UploadSpeed=921600,CPUFreq=240,FlashFreq=80,FlashMode=qio,FlashSize=4M,PartitionScheme=min_spiffs,DebugLevel=none,PSRAM=disabled,LoopCore=1,EventsCore=1,EraseFlash=none,JTAGAdapter=default,ZigbeeMode=default \
-  --libraries ./Submodules \
-  .
-```
-
-For quiet flight builds:
-
-```bash
-arduino-cli compile ... --build-property compiler.cpp.extra_flags=-DVERBOSE_ON=0
-```
-
-
-## Integration Notes
-
-In the main flight-controller sketch, this library is included through Arduino's
-library search path. When this folder is converted to a git submodule, keep the
-folder name stable under `Submodules/` so includes such as `#include "..."`
-continue to resolve.
-
-Most examples below are intentionally small. On the real flight controller,
-objects are usually constructed globally, initialized once from `setup()`, and
-then called from FreeRTOS tasks at deterministic rates.
-
+Enums represent calibration mode/source so invalid magic numbers cannot accidentally start the wrong routine. Function pointers are used for motor callbacks to keep this library independent of the concrete motor driver while still allowing ESC calibration to own outputs safely.
